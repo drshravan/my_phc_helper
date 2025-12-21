@@ -19,7 +19,7 @@ enum StaffType {
   asha,
 }
 
-/// Enum helpers (VERY IMPORTANT)
+/// Enum helpers
 extension StaffTypeExtension on StaffType {
   String toValue() => name;
 
@@ -37,11 +37,17 @@ class Staff {
   final StaffType type;
   final ContactInfo contact;
   final String designation;
+
   final String? employeeCode;
   final DateTime? joiningDate;
+
+  /// Location mapping
   final bool isSubcenterStaff;
   final String workingPhcId;
   final String? workingSubcenterId;
+
+  /// ASHA specific
+  final String? assignedToAnmId;
 
   const Staff({
     required this.id,
@@ -53,7 +59,11 @@ class Staff {
     required this.isSubcenterStaff,
     required this.workingPhcId,
     this.workingSubcenterId,
+    this.assignedToAnmId,
   });
+
+  /// Derived property (no storage needed)
+  bool get isAsha => type == StaffType.asha;
 
   /// -------- COPY WITH --------
   Staff copyWith({
@@ -66,6 +76,7 @@ class Staff {
     bool? isSubcenterStaff,
     String? workingPhcId,
     String? workingSubcenterId,
+    String? assignedToAnmId,
   }) {
     return Staff(
       id: id ?? this.id,
@@ -77,6 +88,7 @@ class Staff {
       isSubcenterStaff: isSubcenterStaff ?? this.isSubcenterStaff,
       workingPhcId: workingPhcId ?? this.workingPhcId,
       workingSubcenterId: workingSubcenterId ?? this.workingSubcenterId,
+      assignedToAnmId: assignedToAnmId ?? this.assignedToAnmId,
     );
   }
 
@@ -84,7 +96,7 @@ class Staff {
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'id': id,
-      'type': type.toValue(), // enum -> string
+      'type': type.toValue(),
       'contact': contact.toMap(),
       'designation': designation,
       'employeeCode': employeeCode,
@@ -92,6 +104,7 @@ class Staff {
       'isSubcenterStaff': isSubcenterStaff,
       'workingPhcId': workingPhcId,
       'workingSubcenterId': workingSubcenterId,
+      'assignedToAnmId': assignedToAnmId,
     };
   }
 
@@ -110,6 +123,9 @@ class Staff {
       workingPhcId: map['workingPhcId'] as String,
       workingSubcenterId: map['workingSubcenterId'] != null
           ? map['workingSubcenterId'] as String
+          : null,
+      assignedToAnmId: map['assignedToAnmId'] != null
+          ? map['assignedToAnmId'] as String
           : null,
     );
   }
@@ -133,7 +149,8 @@ class Staff {
         other.joiningDate == joiningDate &&
         other.isSubcenterStaff == isSubcenterStaff &&
         other.workingPhcId == workingPhcId &&
-        other.workingSubcenterId == workingSubcenterId;
+        other.workingSubcenterId == workingSubcenterId &&
+        other.assignedToAnmId == assignedToAnmId;
   }
 
   @override
@@ -146,11 +163,12 @@ class Staff {
         joiningDate.hashCode ^
         isSubcenterStaff.hashCode ^
         workingPhcId.hashCode ^
-        workingSubcenterId.hashCode;
+        workingSubcenterId.hashCode ^
+        assignedToAnmId.hashCode;
   }
 
   @override
   String toString() {
-    return 'Staff(id: $id, type: $type, designation: $designation, phc: $workingPhcId)';
+    return 'Staff(id: $id, type: $type, designation: $designation, phcId: $workingPhcId)';
   }
 }
