@@ -11,7 +11,7 @@ enum StaffType {
   labTechnician,
   pharmacist,
   staffNurse,
-  ncdStaffNurce,
+  ncdStaffNurse,
   securityGuard,
   cleaner,
   mlhp,
