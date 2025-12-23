@@ -6,4 +6,5 @@ const List subcenters  = [
   "Pallagutta",
   "Rajavaram",
   "Sripathipally",
+  "PHC Malkaopur"
 ];
