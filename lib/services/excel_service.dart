@@ -1,12 +1,11 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 import '../../data/database/database.dart';
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 
 class ExcelService {
-  Future<List<AncRecordsCompanion>> parseExcel(String path) async {
-    final bytes = File(path).readAsBytesSync();
+  Future<List<AncRecordsCompanion>> parseExcel(Uint8List bytes) async {
     final decoder = SpreadsheetDecoder.decodeBytes(bytes);
     final table = decoder.tables.keys.first;
     final sheet = decoder.tables[table];

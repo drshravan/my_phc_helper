@@ -7,6 +7,7 @@ import 'package:my_phc_helper/services/excel_service.dart';
 import 'package:my_phc_helper/utils/app_colors.dart';
 import 'package:intl/intl.dart';
 import 'edd_details_screen.dart';
+import 'dart:io' as java_io;
 
 class EddsTab extends StatefulWidget {
   const EddsTab({super.key});
@@ -56,35 +57,49 @@ class _EddsTabState extends State<EddsTab> {
   Future<void> _pickAndUploadExcel() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xls'],
+      allowedExtensions: ['xls', 'xlsx'],
     );
 
     if (result != null) {
-      String? path = result.files.single.path;
-      if (path != null) {
-        try {
-          Get.dialog(const Center(child: CircularProgressIndicator()));
-          final records = await _excelService.parseExcel(path);
-          for (var record in records) {
-            await _repo.insertAncRecord(record);
-          }
-          Get.back(); // Close loader
-          _refreshData();
-          Get.snackbar(
-            "Success",
-            "Imported ${records.length} records",
-            backgroundColor: AppColors.success,
-            colorText: Colors.white,
-          );
-        } catch (e) {
-          Get.back(); // Close loader
-          Get.snackbar(
-            "Error",
-            "Failed to parse file: $e",
-            backgroundColor: AppColors.error,
-            colorText: Colors.white,
-          );
+      try {
+        Get.dialog(const Center(child: CircularProgressIndicator()));
+
+        List<AncRecordsCompanion> records;
+
+        // On Web, bytes are available directly
+        if (result.files.single.bytes != null) {
+          records = await _excelService.parseExcel(result.files.single.bytes!);
+        } else if (result.files.single.path != null) {
+          // On Mobile/Desktop, read from path
+          // We need dart:io for File, but conditionally import or use logic
+          // Ideally we should import dart:io at top, but since we are modifying logic,
+          // let's assume standard mobile usage
+          final file = java_io.File(result.files.single.path!);
+          final bytes = await file.readAsBytes();
+          records = await _excelService.parseExcel(bytes);
+        } else {
+          throw Exception("No file data available");
         }
+
+        for (var record in records) {
+          await _repo.insertAncRecord(record);
+        }
+        Get.back(); // Close loader
+        _refreshData();
+        Get.snackbar(
+          "Success",
+          "Imported ${records.length} records",
+          backgroundColor: AppColors.success,
+          colorText: Colors.white,
+        );
+      } catch (e) {
+        Get.back(); // Close loader
+        Get.snackbar(
+          "Error",
+          "Failed to parse file: $e",
+          backgroundColor: AppColors.error,
+          colorText: Colors.white,
+        );
       }
     }
   }
