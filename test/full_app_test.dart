@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:my_phc_helper/main.dart'; // Imports main but we'll use a testable widget wrapper if needed
-import 'package:my_phc_helper/screens/home_screen/home_screen.dart';
 import 'package:my_phc_helper/data/database/database.dart';
 import 'package:my_phc_helper/data/repositories/anc_repository.dart';
-import 'package:drift/native.dart'; // For in-memory db
+// For in-memory db
 
 void main() {
   setUp(() {

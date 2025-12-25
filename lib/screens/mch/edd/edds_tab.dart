@@ -71,9 +71,6 @@ class _EddsTabState extends State<EddsTab> {
           records = await _excelService.parseExcel(result.files.single.bytes!);
         } else if (result.files.single.path != null) {
           // On Mobile/Desktop, read from path
-          // We need dart:io for File, but conditionally import or use logic
-          // Ideally we should import dart:io at top, but since we are modifying logic,
-          // let's assume standard mobile usage
           final file = java_io.File(result.files.single.path!);
           final bytes = await file.readAsBytes();
           records = await _excelService.parseExcel(bytes);
@@ -94,11 +91,21 @@ class _EddsTabState extends State<EddsTab> {
         );
       } catch (e) {
         Get.back(); // Close loader
+        String errorMessage = "Failed to parse file: $e";
+        
+        // Remove "Exception:" prefix from cleaner error messages
+        if (e.toString().contains("Exception: ")) {
+          errorMessage = e.toString().replaceAll("Exception: ", "");
+        } else if (e.toString().contains("End of Central Directory")) {
+          errorMessage = "Invalid file format. Please upload a valid .xlsx or .xls file.";
+        }
+        
         Get.snackbar(
           "Error",
-          "Failed to parse file: $e",
+          errorMessage,
           backgroundColor: AppColors.error,
           colorText: Colors.white,
+          duration: const Duration(seconds: 5),
         );
       }
     }

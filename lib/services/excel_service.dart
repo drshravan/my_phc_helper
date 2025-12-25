@@ -3,49 +3,143 @@ import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 import '../../data/database/database.dart';
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
+import 'package:html/parser.dart' show parse;
+import 'package:html/dom.dart' as dom;
 
 class ExcelService {
   Future<List<AncRecordsCompanion>> parseExcel(Uint8List bytes) async {
+    List<List<dynamic>> rows = [];
+
+    // 1. Try parsing directly (XLSX or supported formats)
+    try {
+      rows = _decodeWithSpreadsheetDecoder(bytes);
+    } catch (_) {
+      // 2. If valid spreadsheet decoding fails, try HTML table (Fake XLS)
+      try {
+        final content = String.fromCharCodes(bytes);
+        // Simple validity check for HTML-like content
+        if (content.trim().startsWith('<')) {
+          rows = _parseHtmlTable(content);
+        } else {
+          rethrow;
+        }
+      } catch (_) {
+        // If all attempts fail
+        throw Exception(
+            'Unsupported file format. Binary .xls files are not supported. Please save as .xlsx or generic HTML report.');
+      }
+    }
+
+    if (rows.isEmpty) return [];
+
+    return _processRows(rows);
+  }
+
+  // Helper to decode bytes using spreadsheet_decoder
+  List<List<dynamic>> _decodeWithSpreadsheetDecoder(Uint8List bytes) {
     final decoder = SpreadsheetDecoder.decodeBytes(bytes);
+    // Determine which table to use.
+    // Usually the first one is the active sheet.
+    if (decoder.tables.isEmpty) return [];
+
     final table = decoder.tables.keys.first;
     final sheet = decoder.tables[table];
+    return sheet?.rows ?? [];
+  }
 
-    if (sheet == null) return [];
+  List<List<dynamic>> _parseHtmlTable(String content) {
+    try {
+      var document = parse(content);
+      // Find the first likely table
+      var table = document.querySelector('table');
+      if (table == null) return [];
 
+      List<List<dynamic>> tableRows = [];
+      var rows = table.querySelectorAll('tr');
+
+      for (var row in rows) {
+        var cells = row.querySelectorAll('th, td');
+        var rowData = cells.map((e) => e.text.trim()).toList();
+        tableRows.add(rowData);
+      }
+      return tableRows;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Refactored logic to process rows regardless of source
+  List<AncRecordsCompanion> _processRows(List<List<dynamic>> rows) {
     List<AncRecordsCompanion> records = [];
+    int? headerRowIndex;
+    Map<String, int> columnMap = {};
+    
+    final expectedColumns = {
+      's.no': 'serialNumber',
+      'motherid': 'ancId', 
+      'subcenter': 'subCentre',
+      'mother name': 'name',
+      'mobile': 'contactNumber',
+      'edd date': 'edd',
+      'district': 'district',
+      'phc': 'phc',
+    };
 
-    // Skip header (assuming row 0 is header)
-    for (int i = 1; i < sheet.rows.length; i++) {
-      final row = sheet.rows[i];
+    for (int i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.isEmpty) continue;
+      
+      bool isHeader = false;
+      if (row.any((cell) => cell.toString().toLowerCase().contains('motherid')) && 
+          row.any((cell) => cell.toString().toLowerCase().contains('edd date'))) {
+        isHeader = true;
+      }
+
+      if (isHeader) {
+        headerRowIndex = i;
+        for (int j = 0; j < row.length; j++) {
+          final cellValue = row[j]?.toString().toLowerCase().trim() ?? '';
+          if (expectedColumns.containsKey(cellValue)) {
+            columnMap[expectedColumns[cellValue]!] = j;
+          }
+        }
+        break;
+      }
+    }
+
+    if (headerRowIndex == null) return [];
+
+    for (int i = headerRowIndex + 1; i < rows.length; i++) {
+      final row = rows[i];
       if (row.isEmpty) continue;
 
       try {
+        String? getVal(String key) {
+          if (columnMap.containsKey(key)) {
+            final index = columnMap[key]!;
+            if (index < row.length) {
+              return row[index]?.toString().trim();
+            }
+          }
+          return null;
+        }
+
+        final serialNum = int.tryParse(getVal('serialNumber') ?? '');
+        if (getVal('ancId') == null && getVal('name') == null) continue;
+
         records.add(
           AncRecordsCompanion(
-            serialNumber: Value(int.tryParse(row[0]?.toString() ?? '')),
-            subCentre: Value(row[1]?.toString()),
-            ancId: Value(row[2]?.toString()),
-            name: Value(row[3]?.toString()),
-            contactNumber: Value(row[4]?.toString()),
-            lmp: Value(_parseDate(row[5])),
-            edd: Value(_parseDate(row[6])),
-            husbandName: Value(row[7]?.toString()),
-            village: Value(row[8]?.toString()),
-            age: Value(int.tryParse(row[9]?.toString() ?? '')),
-            gravida: Value(int.tryParse(row[10]?.toString() ?? '')),
-            previousDeliveryMode: Value(row[11]?.toString()),
-            highRiskCause: Value(row[12]?.toString()),
-            birthPlan: Value(row[13]?.toString()),
-            deliveryDate: Value(_parseDate(row[14])),
-            deliveryAddress: Value(row[15]?.toString()),
-            deliveryMode: Value(row[16]?.toString()),
-            ashaName: Value(row[17]?.toString()),
-            ashaContact: Value(row[18]?.toString()),
-            status: Value(_deriveStatus(row[14], row[16])),
+            serialNumber: Value(serialNum),
+            subCentre: Value(getVal('subCentre')),
+            ancId: Value(getVal('ancId')),
+            name: Value(getVal('name')),
+            contactNumber: Value(getVal('contactNumber')),
+            edd: Value(_parseDate(getVal('edd'))),
+            status: const Value('Pending'), 
           ),
         );
       } catch (e) {
-        // print("Error parsing row $i: $e"); // ignored in prod
+        // ignore
       }
     }
     return records;
@@ -69,11 +163,5 @@ class ExcelService {
     return null;
   }
 
-  String _deriveStatus(dynamic deliveryDate, dynamic deliveryMode) {
-    if (deliveryDate != null ||
-        (deliveryMode != null && deliveryMode.toString().isNotEmpty)) {
-      return 'Delivered';
-    }
-    return 'Pending';
-  }
+
 }
