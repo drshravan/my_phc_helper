@@ -1,82 +1,108 @@
-import 'dart:typed_data';
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 import '../../data/database/database.dart';
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 import 'package:html/parser.dart' show parse;
-import 'package:html/dom.dart' as dom;
 
 class ExcelService {
+
+  /// MAIN ENTRY
   Future<List<AncRecordsCompanion>> parseExcel(Uint8List bytes) async {
     List<List<dynamic>> rows = [];
 
-    // 1. Try parsing directly (XLSX or supported formats)
-    try {
-      rows = _decodeWithSpreadsheetDecoder(bytes);
-    } catch (_) {
-      // 2. If valid spreadsheet decoding fails, try HTML table (Fake XLS)
-      try {
-        final content = String.fromCharCodes(bytes);
-        // Simple validity check for HTML-like content
-        if (content.trim().startsWith('<')) {
-          rows = _parseHtmlTable(content);
-        } else {
-          rethrow;
-        }
-      } catch (_) {
-        // If all attempts fail
-        throw Exception(
-            'Unsupported file format. Binary .xls files are not supported. Please save as .xlsx or generic HTML report.');
+    // 1️⃣ Try XLSX (real supported format)
+    rows = _decodeWithSpreadsheetDecoder(bytes);
+
+    // 2️⃣ If empty, try HTML table (fake .xls from govt sites)
+    if (rows.isEmpty) {
+      final content = String.fromCharCodes(bytes);
+      if (_looksLikeHtml(content)) {
+        rows = _parseHtmlTable(content);
       }
     }
 
-    if (rows.isEmpty) return [];
+    // 3️⃣ If still empty → unsupported real binary XLS
+    if (rows.isEmpty) {
+      throw Exception(
+        'This file is an old Excel (.xls) binary format.\n'
+        'Please open it in Excel and Save As → Excel Workbook (.xlsx).',
+      );
+    }
 
     return _processRows(rows);
   }
 
-  // Helper to decode bytes using spreadsheet_decoder
-  List<List<dynamic>> _decodeWithSpreadsheetDecoder(Uint8List bytes) {
-    final decoder = SpreadsheetDecoder.decodeBytes(bytes);
-    // Determine which table to use.
-    // Usually the first one is the active sheet.
-    if (decoder.tables.isEmpty) return [];
+  /// PARSE COPIED TEXT (TSV)
+  Future<List<AncRecordsCompanion>> parsePasteData(String text) async {
+    List<List<dynamic>> rows = [];
+    if (text.isEmpty) return [];
 
-    final table = decoder.tables.keys.first;
-    final sheet = decoder.tables[table];
-    return sheet?.rows ?? [];
+    // Split by newlines
+    final lines = text.split('\n');
+    for (var line in lines) {
+      if (line.trim().isEmpty) continue;
+      // Split by tabs (Excel copy puts tabs between cells)
+      final cells = line.split('\t').map((e) => e.trim()).toList();
+      rows.add(cells);
+    }
+
+    if (rows.isEmpty) return [];
+    
+    // Use the same processing logic
+    return _processRows(rows);
   }
 
-  List<List<dynamic>> _parseHtmlTable(String content) {
+  // ===========================
+  // XLSX DECODER
+  // ===========================
+  List<List<dynamic>> _decodeWithSpreadsheetDecoder(Uint8List bytes) {
     try {
-      var document = parse(content);
-      // Find the first likely table
-      var table = document.querySelector('table');
-      if (table == null) return [];
+      final decoder = SpreadsheetDecoder.decodeBytes(bytes);
+      if (decoder.tables.isEmpty) return [];
 
-      List<List<dynamic>> tableRows = [];
-      var rows = table.querySelectorAll('tr');
-
-      for (var row in rows) {
-        var cells = row.querySelectorAll('th, td');
-        var rowData = cells.map((e) => e.text.trim()).toList();
-        tableRows.add(rowData);
-      }
-      return tableRows;
-    } catch (e) {
+      final tableName = decoder.tables.keys.first;
+      return decoder.tables[tableName]?.rows ?? [];
+    } catch (_) {
       return [];
     }
   }
 
-  // Refactored logic to process rows regardless of source
+  // ===========================
+  // HTML CHECK
+  // ===========================
+  bool _looksLikeHtml(String content) {
+    return content.contains('<table') || content.contains('<html');
+  }
+
+  // ===========================
+  // HTML TABLE PARSER
+  // ===========================
+  List<List<dynamic>> _parseHtmlTable(String content) {
+    final document = parse(content);
+    final table = document.querySelector('table');
+    if (table == null) return [];
+
+    final List<List<dynamic>> rows = [];
+    final trList = table.querySelectorAll('tr');
+
+    for (var tr in trList) {
+      final cells = tr.querySelectorAll('th, td');
+      rows.add(cells.map((e) => e.text.trim()).toList());
+    }
+    return rows;
+  }
+
+  // ===========================
+  // BUSINESS LOGIC
+  // ===========================
   List<AncRecordsCompanion> _processRows(List<List<dynamic>> rows) {
     List<AncRecordsCompanion> records = [];
     int? headerRowIndex;
-    Map<String, int> columnMap = {};
-    
+    final Map<String, int> columnMap = {};
+
     final expectedColumns = {
       's.no': 'serialNumber',
-      'motherid': 'ancId', 
+      'motherid': 'ancId',
       'subcenter': 'subCentre',
       'mother name': 'name',
       'mobile': 'contactNumber',
@@ -85,22 +111,17 @@ class ExcelService {
       'phc': 'phc',
     };
 
+    // 🔍 Detect header row
     for (int i = 0; i < rows.length; i++) {
       final row = rows[i];
-      if (row.isEmpty) continue;
-      
-      bool isHeader = false;
-      if (row.any((cell) => cell.toString().toLowerCase().contains('motherid')) && 
-          row.any((cell) => cell.toString().toLowerCase().contains('edd date'))) {
-        isHeader = true;
-      }
-
-      if (isHeader) {
+      if (row.any((c) => c.toString().toLowerCase().contains('motherid')) &&
+          row.any((c) => c.toString().toLowerCase().contains('edd'))) {
         headerRowIndex = i;
+
         for (int j = 0; j < row.length; j++) {
-          final cellValue = row[j]?.toString().toLowerCase().trim() ?? '';
-          if (expectedColumns.containsKey(cellValue)) {
-            columnMap[expectedColumns[cellValue]!] = j;
+          final cell = row[j]?.toString().toLowerCase().trim();
+          if (expectedColumns.containsKey(cell)) {
+            columnMap[expectedColumns[cell]!] = j;
           }
         }
         break;
@@ -109,59 +130,49 @@ class ExcelService {
 
     if (headerRowIndex == null) return [];
 
+    // 📄 Read data
     for (int i = headerRowIndex + 1; i < rows.length; i++) {
       final row = rows[i];
       if (row.isEmpty) continue;
 
-      try {
-        String? getVal(String key) {
-          if (columnMap.containsKey(key)) {
-            final index = columnMap[key]!;
-            if (index < row.length) {
-              return row[index]?.toString().trim();
-            }
-          }
-          return null;
+      String? getVal(String key) {
+        final idx = columnMap[key];
+        if (idx != null && idx < row.length) {
+          return row[idx]?.toString().trim();
         }
-
-        final serialNum = int.tryParse(getVal('serialNumber') ?? '');
-        if (getVal('ancId') == null && getVal('name') == null) continue;
-
-        records.add(
-          AncRecordsCompanion(
-            serialNumber: Value(serialNum),
-            subCentre: Value(getVal('subCentre')),
-            ancId: Value(getVal('ancId')),
-            name: Value(getVal('name')),
-            contactNumber: Value(getVal('contactNumber')),
-            edd: Value(_parseDate(getVal('edd'))),
-            status: const Value('Pending'), 
-          ),
-        );
-      } catch (e) {
-        // ignore
+        return null;
       }
+
+      if (getVal('ancId') == null && getVal('name') == null) continue;
+
+      records.add(
+        AncRecordsCompanion(
+          serialNumber:
+              Value(int.tryParse(getVal('serialNumber') ?? '')),
+          subCentre: Value(getVal('subCentre')),
+          ancId: Value(getVal('ancId')),
+          name: Value(getVal('name')),
+          contactNumber: Value(getVal('contactNumber')),
+          edd: Value(_parseDate(getVal('edd'))),
+          status: const Value('Pending'),
+        ),
+      );
     }
+
     return records;
   }
 
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value;
-    if (value is String) {
-      // Try common formats
-      try {
-        return DateFormat('dd-MM-yyyy').parse(value);
-      } catch (_) {}
-      try {
-        return DateFormat('dd/MM/yyyy').parse(value);
-      } catch (_) {}
-      try {
-        return DateTime.tryParse(value);
-      } catch (_) {}
-    }
-    return null;
+  // ===========================
+  // DATE PARSER
+  // ===========================
+  DateTime? _parseDate(String? value) {
+    if (value == null || value.isEmpty) return null;
+    try {
+      return DateFormat('dd-MM-yyyy').parse(value);
+    } catch (_) {}
+    try {
+      return DateFormat('dd/MM/yyyy').parse(value);
+    } catch (_) {}
+    return DateTime.tryParse(value);
   }
-
-
 }

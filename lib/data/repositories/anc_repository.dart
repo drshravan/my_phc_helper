@@ -59,6 +59,76 @@ class AncRepository {
     return await query.map((row) => row.read(countExp)).getSingle() ?? 0;
   }
   
-  // Note: Assuming 'deliveryAddress' dictates Govt vs Private, logic can be refined
-  // For now generic place holders if we don't have exact column mapping
+  Future<List<MonthStats>> getAggregatedMonths() async {
+    final allRecords = await getAllAncRecords();
+    Map<String, MonthStats> grouped = {};
+
+    for (var record in allRecords) {
+      if (record.edd == null) continue;
+      
+      final key = "${record.edd!.year}-${record.edd!.month.toString().padLeft(2, '0')}";
+      
+      if (!grouped.containsKey(key)) {
+        grouped[key] = MonthStats(
+          year: record.edd!.year,
+          month: record.edd!.month,
+          total: 0,
+          normal: 0,
+          lscs: 0,
+          abortion: 0,
+          govt: 0,
+          private: 0,
+        );
+      }
+
+      final stats = grouped[key]!;
+      stats.total++;
+
+      // Delivery Mode
+      final mode = record.deliveryMode?.toLowerCase() ?? '';
+      if (mode.contains('normal')) {
+        stats.normal++;
+      } else if (mode.contains('lscs') || mode.contains('c-section')) stats.lscs++;
+      else if (mode.contains('abortion')) stats.abortion++;
+
+      // Delivery Place (Simple heuristic based on available data)
+      final place = record.deliveryAddress?.toLowerCase() ?? '';
+      if (place.contains('govt') || place.contains('phc') || place.contains('dh') || place.contains('sdh')) {
+        stats.govt++;
+      } else if (place.contains('pvt') || place.contains('private') || place.contains('hosp')) {
+        stats.private++;
+      }
+    }
+
+    final sortedList = grouped.values.toList()
+      ..sort((a, b) {
+        final dateA = DateTime(a.year, a.month);
+        final dateB = DateTime(b.year, b.month);
+        return dateB.compareTo(dateA); // Newest first
+      });
+
+    return sortedList;
+  }
+}
+
+class MonthStats {
+  final int year;
+  final int month;
+  int total;
+  int normal;
+  int lscs;
+  int abortion;
+  int govt;
+  int private;
+
+  MonthStats({
+    required this.year,
+    required this.month,
+    required this.total,
+    required this.normal,
+    required this.lscs,
+    required this.abortion,
+    required this.govt,
+    required this.private,
+  });
 }

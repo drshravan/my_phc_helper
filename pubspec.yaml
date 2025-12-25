@@ -39,13 +39,15 @@ dependencies:
   path_provider: ^2.1.5
   drift_flutter: ^0.2.8
   sqlite3_flutter_libs: ^0.5.41
-  spreadsheet_decoder: ^2.0.1
+  spreadsheet_decoder: ^2.1.1
+  syncfusion_flutter_xlsio: ^25.1.41
   percent_indicator: ^4.2.3
   file_picker: ^8.1.4
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.10+1
   intl: ^0.19.0
-  html: ^0.15.6
+  html: ^0.15.4
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

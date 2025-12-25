@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:my_phc_helper/utils/app_colors.dart';
 import 'dashboard_tab.dart';
 import 'edds_tab.dart';
+import 'entries_tab.dart';
 
 class EddScreen extends StatefulWidget {
   const EddScreen({super.key});
@@ -16,7 +17,7 @@ class _EddScreenState extends State<EddScreen> {
   final List<Widget> _tabs = [
     const DashboardTab(),
     const EddsTab(),
-    const Center(child: Text("Entries Placeholder")),
+    const EntriesTab(),
   ];
 
   @override
