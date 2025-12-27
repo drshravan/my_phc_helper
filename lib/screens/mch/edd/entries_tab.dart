@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:my_phc_helper/data/database/database.dart';
-import 'package:my_phc_helper/data/repositories/anc_repository.dart';
+import 'package:intl/intl.dart';
+import 'package:my_phc_helper/data/models/anc_record_model.dart';
+import 'package:my_phc_helper/data/repositories/mch_repository.dart';
 import 'package:my_phc_helper/services/excel_service.dart';
 import 'package:my_phc_helper/utils/app_colors.dart';
+import 'package:my_phc_helper/widgets/neumorphic_container.dart';
+import 'package:my_phc_helper/widgets/advanced_pin_input.dart';
 
 class EntriesTab extends StatefulWidget {
   const EntriesTab({super.key});
@@ -14,10 +17,16 @@ class EntriesTab extends StatefulWidget {
 
 class _EntriesTabState extends State<EntriesTab> {
   final ExcelService excelService = ExcelService();
-  final AncRepository repo = Get.find<AncRepository>();
+  final MchRepository repo = Get.find<MchRepository>();
   final TextEditingController pasteController = TextEditingController();
+
+  bool _isUnlocked = false;
+  List<AncRecordModel> previewRecords = [];
   
-  List<AncRecordsCompanion> previewRecords = [];
+  // Security PIN
+  static const String _staticPin = "1234";
+
+
 
   Future<void> _processPaste() async {
     final text = pasteController.text;
@@ -31,12 +40,56 @@ class _EntriesTabState extends State<EntriesTab> {
           barrierDismissible: false);
 
       final records = await excelService.parsePasteData(text);
-      
       Get.back(); // close loader
 
       if (records.isEmpty) {
-         Get.snackbar("Error", "No valid records found in pasted text.");
+         Get.snackbar("Error", "No valid records found.");
          return;
+      }
+
+      // 1. Identify Month/Year from the first record (Assumption: Batch is for one month)
+      final firstEdd = records.first.edd;
+      if (firstEdd != null) {
+        final year = firstEdd.year;
+        final month = firstEdd.month;
+        
+        // 2. Check for existing data & Prepare Merge
+        // Fetch existing records once to check against
+        final existingRecords = await repo.getRecordsForMonth(year, month).first;
+        
+        // Map existing records by ANC ID for fast lookup
+        final existingMap = {for (var r in existingRecords) r.ancId?.trim().toLowerCase(): r};
+        
+        
+        // 3. Apply Merge Logic
+        // int newCount = 0; // Unused
+        int updateCount = 0;
+
+        for (var newRecord in records) {
+           final key = newRecord.ancId?.trim().toLowerCase();
+           
+           if (key != null && existingMap.containsKey(key)) {
+             // MATCH FOUND: Preserve ID and Status
+             final existing = existingMap[key]!;
+             newRecord.id = existing.id;
+             newRecord.status = existing.status; // Keep existing status (e.g. Delivered)
+             
+             // Preserve other critical manual fields to be safe
+             newRecord.deliveryDate = existing.deliveryDate;
+             newRecord.deliveryMode = existing.deliveryMode;
+             newRecord.babyGender = existing.babyGender;
+             
+             updateCount++;
+           } 
+           // else { new record }
+        }
+        
+        // Auto-proceed to preview (no blocking conflict dialog anymore)
+        // Just show a distinct snackbar if merging
+        if (updateCount > 0) {
+           Get.snackbar("Merge Mode", "Found $updateCount existing records. Their status will be preserved.", 
+             backgroundColor: AppColors.secondary, colorText: Colors.white, duration: const Duration(seconds: 4));
+        }
       }
 
       setState(() {
@@ -44,23 +97,67 @@ class _EntriesTabState extends State<EntriesTab> {
       });
 
     } catch (e) {
-      Get.back(); // close loader
+      if (Get.isDialogOpen ?? false) Get.back();
+      
+      String errorMsg = "Failed to parse: $e";
+      if (e.toString().contains("permission-denied")) {
+        // Show Blocking Dialog
+        Get.dialog(
+          AlertDialog(
+            title: const Text("Database Access Denied", style: TextStyle(color: Colors.red)),
+            content: const SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Text("The app is blocked by Firebase Security Rules.", style: TextStyle(fontWeight: FontWeight.bold)),
+                   SizedBox(height: 16),
+                   Text("Action Required:", style: TextStyle(fontWeight: FontWeight.w600)),
+                   Text("1. Open Firebase Console"),
+                   Text("2. Go to Firestore Database > Rules"),
+                   Text("3. Change 'allow read, write: if false;' to:"),
+                   SizedBox(height: 8),
+                   SelectableText(
+                     "allow read, write: if true;", 
+                     style: TextStyle(fontFamily: 'monospace', backgroundColor: Colors.yellowAccent),
+                   ),
+                   SizedBox(height: 8),
+                   Text("4. Click Publish"),
+                ],
+              ),
+            ),
+            actions: [
+               TextButton(onPressed: () => Get.back(), child: const Text("I have updated the rules")),
+               ElevatedButton(
+                 onPressed: () => Get.back(), 
+                 child: const Text("Close")
+               ),
+            ],
+          ),
+          barrierDismissible: false,
+        );
+        return; // Don't show snackbar
+      }
+      
       Get.snackbar(
-        "Error",
-        "Failed to parse data: $e",
-        backgroundColor: AppColors.error,
+        "Error", 
+        errorMsg, 
+        backgroundColor: AppColors.error, 
         colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     }
   }
+
+
 
   Future<void> _confirmImport() async {
      try {
       Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
       
-      for (var record in previewRecords) {
-        await repo.insertAncRecord(record);
-      }
+      // Use Batch Write to save Firestore quota and improve speed
+      await repo.batchAddAncRecords(previewRecords);
       
       Get.back(); // close loader
       
@@ -71,7 +168,7 @@ class _EntriesTabState extends State<EntriesTab> {
       
       Get.snackbar(
         "Success",
-        "Imported ${previewRecords.length} records successfully!",
+        "Imported records successfully!",
         backgroundColor: AppColors.success,
         colorText: Colors.white,
       );
@@ -89,8 +186,52 @@ class _EntriesTabState extends State<EntriesTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isUnlocked) {
+      return _buildLockScreen();
+    }
     return Scaffold(
       body: previewRecords.isNotEmpty ? _buildPreviewUI() : _buildPasteUI(),
+    );
+  }
+
+  Widget _buildLockScreen() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock, size: 64, color: isDark ? Colors.white70 : Colors.grey),
+              const SizedBox(height: 24),
+              const Text("Restricted Access", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text("Enter PIN to access Data Entry", style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 280, // Wider for 4 boxes
+                child: AdvancedPinInput(
+                  length: 4,
+                  onCompleted: (pin) {
+                    if (pin == _staticPin) {
+                      setState(() {
+                         _isUnlocked = true;
+                      });
+                    } else {
+                       // Optional: Clear fields or shake? 
+                       // For now just snackbar
+                       Get.snackbar("Error", "Incorrect PIN", backgroundColor: AppColors.error, colorText: Colors.white);
+                    }
+                  },
+                ),
+              ),
+
+              // Button removed as AdvancedPinInput handles auto-completion
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -117,12 +258,10 @@ class _EntriesTabState extends State<EntriesTab> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextField(
+            child: NeumorphicContainer(
+               padding: EdgeInsets.zero,
+               borderRadius: BorderRadius.circular(12),
+               child: TextField(
                 controller: pasteController,
                 maxLines: null,
                 expands: true,
@@ -166,7 +305,7 @@ class _EntriesTabState extends State<EntriesTab> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  "Found ${previewRecords.length} records. Please review before importing.",
+                  "Found ${previewRecords.length} records. Ready to import.",
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -181,8 +320,8 @@ class _EntriesTabState extends State<EntriesTab> {
               final record = previewRecords[index];
               return ListTile(
                 leading: CircleAvatar(child: Text("${index + 1}")),
-                title: Text(record.name.value ?? "Unknown"),
-                subtitle: Text("ID: ${record.ancId.value} | EDD: ${record.edd.value?.toString().split(' ')[0]}"),
+                title: Text(record.name ?? "Unknown"),
+                subtitle: Text("ID: ${record.ancId} | EDD: ${DateFormat('dd-MM-yyyy').format(record.edd!)}"),
               );
             },
           ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "120748976198",
+    "project_id": "my-phc-helper-shravan",
+    "storage_bucket": "my-phc-helper-shravan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:120748976198:android:2f782f725bc90960764247",
+        "android_client_info": {
+          "package_name": "com.siddula.shravan.my_phc_helper"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzN41qLHOGjiRq0XJiJvg82LwjEzYvrC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

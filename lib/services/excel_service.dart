@@ -1,13 +1,13 @@
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
-import '../../data/database/database.dart';
-import 'package:drift/drift.dart';
+import '../../data/models/anc_record_model.dart';
+import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:html/parser.dart' show parse;
 
 class ExcelService {
 
   /// MAIN ENTRY
-  Future<List<AncRecordsCompanion>> parseExcel(Uint8List bytes) async {
+  Future<List<AncRecordModel>> parseExcel(Uint8List bytes) async {
     List<List<dynamic>> rows = [];
 
     // 1️⃣ Try XLSX (real supported format)
@@ -33,7 +33,7 @@ class ExcelService {
   }
 
   /// PARSE COPIED TEXT (TSV)
-  Future<List<AncRecordsCompanion>> parsePasteData(String text) async {
+  Future<List<AncRecordModel>> parsePasteData(String text) async {
     List<List<dynamic>> rows = [];
     if (text.isEmpty) return [];
 
@@ -95,8 +95,8 @@ class ExcelService {
   // ===========================
   // BUSINESS LOGIC
   // ===========================
-  List<AncRecordsCompanion> _processRows(List<List<dynamic>> rows) {
-    List<AncRecordsCompanion> records = [];
+  List<AncRecordModel> _processRows(List<List<dynamic>> rows) {
+    List<AncRecordModel> records = [];
     int? headerRowIndex;
     final Map<String, int> columnMap = {};
 
@@ -144,17 +144,22 @@ class ExcelService {
       }
 
       if (getVal('ancId') == null && getVal('name') == null) continue;
+      
+      // Note: serialNumber is optional or auto-inc in db usually, here we parse for reference
+      // AncRecordModel doesn't have serialNumber in the V1 model I wrote?
+      // Let's check AncRecordModel definition. I did NOT include serialNumber in Step 862 code.
+      // That's fine, it's not critical for logic usually.
 
       records.add(
-        AncRecordsCompanion(
-          serialNumber:
-              Value(int.tryParse(getVal('serialNumber') ?? '')),
-          subCentre: Value(getVal('subCentre')),
-          ancId: Value(getVal('ancId')),
-          name: Value(getVal('name')),
-          contactNumber: Value(getVal('contactNumber')),
-          edd: Value(_parseDate(getVal('edd'))),
-          status: const Value('Pending'),
+        AncRecordModel(
+          subCentre: getVal('subCentre'),
+          ancId: getVal('ancId'),
+          name: getVal('name'),
+          contactNumber: getVal('contactNumber'),
+          edd: _parseDate(getVal('edd')),
+          district: getVal('district'),
+          phcName: getVal('phc'),
+          status: 'Pending',
         ),
       );
     }

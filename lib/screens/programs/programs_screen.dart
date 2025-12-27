@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:my_phc_helper/screens/mch/mch_screen.dart';
+
+import '../../widgets/neumorphic_container.dart';
+import '../mch/mch_screen.dart';
 
 class ProgramsScreen extends StatelessWidget {
   const ProgramsScreen({super.key});
@@ -8,84 +10,88 @@ class ProgramsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Programs")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          children: [
-            _buildProgramCard(
-              title: "MCH",
-              icon: Icons.pregnant_woman,
-              color: Colors.pinkAccent,
-              onTap: () => Get.to(() => const MchScreen()),
-            ),
-            _buildProgramCard(
-              title: "Immunization",
-              icon: Icons.vaccines,
-              color: Colors.blue,
-            ),
-            _buildProgramCard(
-              title: "Communicable Disease",
-              icon: Icons.coronavirus,
-              color: Colors.orange,
-            ),
-            _buildProgramCard(
-              title: "NCD",
-              icon: Icons.monitor_heart,
-              color: Colors.red,
-            ),
-            _buildProgramCard(
-              title: "Leprosy LCDC",
-              icon: Icons.medical_services,
-              color: Colors.purple,
-            ),
-          ],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text("Programs"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 20,
+            mainAxisSpacing: 20,
+            children: [
+              _buildNeomorphicProgramCard(
+                context,
+                title: "MCH",
+                icon: Icons.pregnant_woman,
+                accentColor: Colors.pinkAccent,
+                onTap: () => Get.to(() => const MchScreen()),
+              ),
+              _buildNeomorphicProgramCard(
+                context,
+                title: "Immunization",
+                icon: Icons.vaccines,
+                accentColor: Colors.blue,
+              ),
+              _buildNeomorphicProgramCard(
+                context,
+                title: "Communicable Disease",
+                icon: Icons.coronavirus,
+                accentColor: Colors.orange,
+              ),
+              _buildNeomorphicProgramCard(
+                context,
+                title: "NCD",
+                icon: Icons.monitor_heart,
+                accentColor: Colors.red,
+              ),
+              _buildNeomorphicProgramCard(
+                context,
+                title: "Leprosy LCDC",
+                icon: Icons.medical_services,
+                accentColor: Colors.purple,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildProgramCard({
+  Widget _buildNeomorphicProgramCard(
+    BuildContext context, {
     required String title,
     required IconData icon,
-    required Color color,
+    required Color accentColor,
     VoidCallback? onTap,
   }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              colors: [color.withValues(alpha: 0.7), color],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+    return NeumorphicContainer(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Inner circle for icon
+          NeumorphicContainer(
+            padding: const EdgeInsets.all(12),
+            boxShape: BoxShape.circle,
+            child: Icon(icon, size: 32, color: accentColor),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 48, color: Colors.white),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+          const SizedBox(height: 16),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14, // Slightly smaller to fit grid
                 ),
-              ),
-            ],
           ),
-        ),
+        ],
       ),
     );
   }
